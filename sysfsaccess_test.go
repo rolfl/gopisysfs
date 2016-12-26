@@ -39,6 +39,36 @@ func TestWriteReadFile(t *testing.T) {
 
 }
 
+func TestAwaitFileExists(t *testing.T) {
+	SetLogFn(t.Logf)
+	name := fmt.Sprintf("/tmp/gopitest.%v.exists", os.Getpid())
+	t.Logf("Using test file %v", name)
+	err := writeFile(name, "boo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, err := awaitFileCreate(name, 2 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("About to wait on channel\n")
+	err, ok := <-ch
+	t.Logf("Got notify on channel (closed %v): %v\n", !ok, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("Channel incorrectly closed without a value")
+	}
+
+	t.Logf("Checking file contents\n")
+	data, err := readFile(name)
+	if data != "boo" {
+		t.Fatalf("Expected to read boo but got: %v", data)
+	}
+
+}
+
 func TestAwaitFile(t *testing.T) {
 	SetLogFn(t.Logf)
 	name := fmt.Sprintf("/tmp/gopitest.%v.await", os.Getpid())

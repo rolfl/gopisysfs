@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 )
 
 const (
@@ -145,6 +144,62 @@ func readFilePanic(name string) string {
 	return data
 }
 
+
+func awaitFileCreate(name string, timeout time.Duration) (<-chan error, error) {
+
+	ret := make(chan error, 1)
+
+	if checkFile(name) {
+		ret <- nil;
+		return ret, nil
+	}
+
+	dir := filepath.Dir(name)
+	if stat, err := os.Stat(dir); err != nil || !stat.IsDir() {
+		if err != nil {
+			return nil, fmt.Errorf("Unable to poll for a file in a nonexistent folder %v: %v", dir, err)
+		}
+		return nil, fmt.Errorf("Unable to poll for a file in a non-folder %v: %v", dir, stat)
+	}
+
+	// set up notification and timeout
+	tout := time.After(timeout)
+	// intervals at every 20 milliseconds
+	interval := time.NewTicker(20 * time.Millisecond).C
+	// naieve polling system
+	go func () {
+		// wait for events on the folder to indicate availability of the file
+		for {
+
+			if checkFile(name) {
+				// Found it!
+				ret <- nil
+				return
+			}
+
+			select {
+			case <-tout:
+				ret <- fmt.Errorf("Timed out waiting for %v after %v", name, timeout)
+				return
+			case <-interval:
+				// ignore specific event, check actual file later
+			}
+		}
+	}()
+
+	return ret, nil
+
+}
+
+func lock() bool {
+	syslock.Lock()
+	return true
+}
+
+func unlock(bool) {
+	syslock.Unlock()
+}
+
 //readFile reads the file and returns the contents as a string
 func readFile(name string) (string, error) {
 	defer unlock(lock())
@@ -163,72 +218,11 @@ func writeFile(name, text string) error {
 	return ioutil.WriteFile(name, data, 0444)
 }
 
-func awaitFileCreate(name string, timeout time.Duration) (<-chan error, error) {
-
-	ret := make(chan error, 1)
+func checkFile(name string) bool {
+	defer unlock(lock())
 	if _, err := os.Stat(name); err == nil {
 		// already exists
-		ret <- nil
-		return ret, nil
+		return true
 	}
-
-	// set up notification and timeout
-
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return nil, err
-	}
-
-	dir := filepath.Dir(name)
-
-	err = watcher.Add(dir)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to create watcher on %v: %v", name, err)
-	}
-
-	tout := time.After(timeout)
-
-	go func() {
-		// wait for events on the folder to indicate availability of the file
-		defer func() {
-			close(ret)
-			watcher.Close()
-		}()
-		for {
-			_, serr := os.Stat(name)
-			if serr == nil {
-				ret <- nil
-				return
-			}
-			select {
-			case <-tout:
-				ret <- fmt.Errorf("Timed out waiting for %v after %v", name, timeout)
-				return
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					err = fmt.Errorf("Watcher Errors channel closed too soon watching %v", dir)
-				}
-				ret <- err
-				return
-			case _, ok := <-watcher.Events:
-				if !ok {
-					ret <- fmt.Errorf("Unexpected early close of Watcher.Events watching %v", dir)
-					return
-				}
-				// ignore specific event, check actual file later
-			}
-		}
-	}()
-
-	return ret, nil
-
-}
-
-func lock() bool {
-	syslock.Lock()
-	return true
-}
-
-func unlock(bool) {
-	syslock.Unlock()
+	return false
 }
