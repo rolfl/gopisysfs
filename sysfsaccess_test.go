@@ -3,13 +3,34 @@ package gopisysfs
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
 
+func init() {
+	abs, _ := filepath.Abs("testdata")
+	setRoot(abs)
+}
+
+func tmpFile(ext string) string {
+	return file("tmp", fmt.Sprintf("gopitest.%v.%v", os.Getpid(), ext))
+}
+
+func TestCheck(t *testing.T) {
+	name := tmpFile("checkfile")
+	if checkFile(name) {
+		t.Errorf("Expected file %v to not exist, but it does", name)
+	}
+	writeFile(name, "boo")
+	if !checkFile(name) {
+		t.Errorf("Expected file %v to exist, but it does not", name)
+	}
+}
+
 func TestModel(t *testing.T) {
 	t.Log("Testing details")
-	model := readFilePanic(sys_model)
+	model := readFilePanic(file(sys_model))
 	if model == "" {
 		t.Errorf("Unable to get model")
 	}
@@ -19,11 +40,11 @@ func TestModel(t *testing.T) {
 	}
 
 	t.Logf("Got Got model %v and revision %v", model, revision)
-	
+
 }
 
 func TestWriteReadFile(t *testing.T) {
-	name := fmt.Sprintf("/tmp/gopitest.%v.readwrite", os.Getpid())
+	name := tmpFile("readwrite")
 	err := writeFile(name, "boo")
 	if err != nil {
 		t.Fatal(err)
@@ -41,13 +62,13 @@ func TestWriteReadFile(t *testing.T) {
 
 func TestAwaitFileExists(t *testing.T) {
 	SetLogFn(t.Logf)
-	name := fmt.Sprintf("/tmp/gopitest.%v.exists", os.Getpid())
+	name := tmpFile("awaitpre")
 	t.Logf("Using test file %v", name)
 	err := writeFile(name, "boo")
 	if err != nil {
 		t.Fatal(err)
 	}
-	ch, err := awaitFileCreate(name, 2 * time.Second)
+	ch, err := awaitFileCreate(name, 2*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,9 +92,9 @@ func TestAwaitFileExists(t *testing.T) {
 
 func TestAwaitFile(t *testing.T) {
 	SetLogFn(t.Logf)
-	name := fmt.Sprintf("/tmp/gopitest.%v.await", os.Getpid())
+	name := tmpFile("awaitpost")
 	t.Logf("Using test file %v", name)
-	ch, err := awaitFileCreate(name, 2 * time.Second)
+	ch, err := awaitFileCreate(name, 2*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
