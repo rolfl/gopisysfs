@@ -58,9 +58,11 @@ type Pi struct {
 	GPIOPorts []int
 }
 
-var logfn func(format string, args ...interface{})
+type LogFunction func(format string, args ...interface{})
 
-func SetLogFn(lfn func(string, ...interface{})) {
+var logfn LogFunction
+
+func SetLogFn(lfn LogFunction) {
 	logfn = lfn
 }
 

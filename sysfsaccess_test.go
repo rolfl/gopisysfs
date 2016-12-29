@@ -8,13 +8,16 @@ import (
 	"time"
 )
 
+var nowtime string
+
 func init() {
 	abs, _ := filepath.Abs("testdata")
 	setRoot(abs)
+	nowtime = fmt.Sprintf("%v", time.Now().UnixNano())
 }
 
 func tmpFile(ext string) string {
-	return file("tmp", fmt.Sprintf("gopitest.%v.%v", os.Getpid(), ext))
+	return file("tmp", fmt.Sprintf("gopitest.%v.%v.%v", os.Getpid(), nowtime, ext))
 }
 
 func TestCheck(t *testing.T) {
