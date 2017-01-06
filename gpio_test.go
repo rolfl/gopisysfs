@@ -2,24 +2,19 @@ package gopisysfs
 
 import (
 	"testing"
-	"time"
 )
 
 func TestResetNoop(t *testing.T) {
+	mustbereal()
 	SetLogFn(t.Logf)
 	pi := GetDetailsFor(testrevision, testmodel)
 	t.Logf("Got details %v", pi)
-	ch, err := pi.GPIOResetAsync(testinport, time.Second)
+	port := pi.GetPort(testinport)
+	if !port.IsGPIO() {
+		t.Fatalf("Port %v is not a GPIO port. Can't test", testinport)
+	}
+	err := port.Reset()
 	if err != nil {
 		t.Fatal(err)
-	}
-	<-time.After(50 * time.Millisecond)
-	select {
-	case <-time.After(time.Second):
-		t.Fatal("Expected to time out after 1 second, but it has been longer")
-	case e := <-ch:
-		if e != nil {
-			t.Fatal(e)
-		}
 	}
 }
