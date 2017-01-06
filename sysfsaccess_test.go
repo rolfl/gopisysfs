@@ -124,3 +124,65 @@ func TestAwaitFile(t *testing.T) {
 	}
 
 }
+
+func TestAwaitRemoveGone(t *testing.T) {
+	SetLogFn(t.Logf)
+	name := tmpFile("awaitremovepre")
+	t.Logf("Using test file %v", name)
+	ch, err := awaitFileRemove(name, 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	limit := time.After(10 * time.Millisecond)
+	select {
+	case err := <-ch:
+		// OK, great.
+		if err != nil {
+			t.Fatal(err)
+		}
+
+	case <-limit:
+		t.Fatal("Expected to return immediately on non-existing remove test")
+	}
+}
+
+func TestAwaitRemoveStill(t *testing.T) {
+	SetLogFn(t.Logf)
+	name := tmpFile("awaitremovepost")
+	t.Logf("Using test file %v", name)
+	err := writeFile(name, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ch, err := awaitFileRemove(name, 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		<-time.After(100 * time.Millisecond)
+		os.Remove(name)
+	}()
+
+	// a little delay here.
+	<-time.After(50 * time.Millisecond)
+
+	if !checkFile(name) {
+		t.Fatalf("Test file %v removed too early for some reason", name)
+	}
+
+	select {
+	case <-time.After(1 * time.Second):
+		t.Fatalf("File %v should have been removed already", name)
+	case e, ok := <-ch:
+		if e != nil {
+			t.Fatal(e)
+		}
+		if !ok {
+			t.Fatal("Error channel prematurely closed")
+		}
+	}
+
+}

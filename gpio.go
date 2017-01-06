@@ -5,8 +5,6 @@ import (
 	"time"
 )
 
-const forever = 100 * 365 * 24 * time.Hour
-
 func (pi Pi) IsPort(port int) bool {
 	for _, p := range pi.GPIOPorts {
 		if p == port {
@@ -29,33 +27,7 @@ func (pi Pi) GPIOResetAsync(port int, timeout time.Duration) (<-chan error, erro
 	if !pi.IsPort(port) {
 		return nil, pi.notAPort(port)
 	}
-	ret := make(chan error, 5)
-
-	gpiodir := pi.portFolder(port)
-	if checkFile(gpiodir) {
-		tout := time.After(timeout)
-		go func() {
-			ticker := time.NewTicker(50 * time.Millisecond).C
-			for {
-				if !checkFile(gpiodir) {
-					// successful reset
-					ret <- nil
-					return
-				}
-				select {
-				case <-tout:
-					ret <- fmt.Errorf("Timeout resetting port %v after %v", port, timeout)
-					return
-				case <-ticker:
-				}
-			}
-		}()
-	} else {
-		// folder is already missing, no need for polling.
-		ret <- nil
-	}
-
-	return ret, nil
+	return awaitFileRemove(pi.portFolder(port), timeout)
 }
 
 // GPIOResetAsync will reset the specified portand only return when it is complete

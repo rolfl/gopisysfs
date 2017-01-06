@@ -15,14 +15,47 @@ import (
 const (
 	sys_model    = "sys/firmware/devicetree/base/model"
 	proc_cpuinfo = "proc/cpuinfo"
+
+	// pollInterval is how long we should wait between naieve polling of files
+	pollInterval = 20 * time.Millisecond
+	// forever is about 100 years.
+	forever = 100 * 365 * 24 * time.Hour
 )
+
+func init() {
+	setOnPi()
+	setModelMaps()
+}
 
 var rootpath = "/"
 
+// setRoot is designed to be called by the test cases to exercise some hard-to-change things on an actual pi.
 func setRoot(rt string) {
 	rootpath = rt
 }
 
+var onpi bool
+
+// setOnPi is called from the init() function
+func setOnPi() {
+	// don't use file(...) mechanism here. Need absolute file reference.
+	compat, err := readFile("/sys/firmware/devicetree/base/compatible")
+	if err != nil {
+		return
+	}
+	// brcm matches the broadcom compat mechanism, which almost certainly means we are running on a pi.
+	if regexp.MustCompile(`.*\bbrcm\b.*`).MatchString(compat) {
+		onpi = true
+	}
+}
+
+// IsOnPi returns true if this code is (probably) running on a Raspberry Pi.
+func IsOnPi() bool {
+	return onpi
+}
+
+// file gets a file path inside the /sys file system,
+// but it can be hooked by the test cases to use a test filesystem instead of the real /sys
 func file(paths ...string) string {
 	path := filepath.Join(paths...)
 	if !filepath.IsAbs(path) {
@@ -58,14 +91,21 @@ type Pi struct {
 	GPIOPorts []int
 }
 
+// LogFunction declares a signature that can be used for this library to log information to.
+// Set a log function by calling SetLogFn(...).
 type LogFunction func(format string, args ...interface{})
 
+// The log function we use for logging, may be nil.
 var logfn LogFunction
 
+// SetLogFn instructs this library to use the specified function to send log messages to.
+// Set to nil to disable loggin.
+// For example `gopisysfs.SetLogFn(log.Printf)` (but note that trace details will be wrong in the log library with that call).
 func SetLogFn(lfn LogFunction) {
 	logfn = lfn
 }
 
+// info is internally used to log details.
 func info(format string, args ...interface{}) {
 	lfn := logfn
 	if lfn == nil {
@@ -78,12 +118,12 @@ var syslock sync.Mutex
 
 var modelMaps = make(map[string]([]string))
 var details Pi
-var revisionre = regexp.MustCompile(`(?sm).*^Revision\s+:\s+(\S+)\s*$.*`)
 
 // from http://www.raspberrypi-spy.co.uk/2012/09/checking-your-raspberry-pi-board-version/
 
-// init establishes the basic mapping between the P1 headers used, and the Pi hardware revisions that use them
-func init() {
+// setModelMaps establishes the basic mapping between the P1 headers used, and the Pi hardware revisions that use them.
+// setModelMaps is called from init()
+func setModelMaps() {
 	modelMaps["26v10"] = []string{"Beta", "0002", "0003"}
 	modelMaps["26v20"] = []string{"0004", "0005", "0006", "0007", "0008", "0009",
 		"000d", "000e", "000f"}
@@ -153,6 +193,7 @@ func (pi *Pi) String() string {
 // readRevision gets the hardware revision for a RPi
 func readRevision() string {
 	cpuinfo := readFilePanic(file(proc_cpuinfo))
+	revisionre := regexp.MustCompile(`(?sm).*^Revision\s+:\s+(\S+)\s*$.*`)
 	revision := revisionre.ReplaceAllString(cpuinfo, "$1")
 	return revision
 }
@@ -188,15 +229,56 @@ func awaitFileCreate(name string, timeout time.Duration) (<-chan error, error) {
 
 	// set up notification and timeout
 	tout := time.After(timeout)
-	// intervals at every 20 milliseconds
-	interval := time.NewTicker(20 * time.Millisecond).C
+	// intervals at every poll cycle
+	interval := time.NewTicker(pollInterval).C
 	// naieve polling system
 	go func() {
-		// wait for events on the folder to indicate availability of the file
 		for {
 
 			if checkFile(name) {
 				// Found it!
+				ret <- nil
+				return
+			}
+
+			select {
+			case <-tout:
+				ret <- fmt.Errorf("Timed out waiting for %v after %v", name, timeout)
+				return
+			case <-interval:
+				// ignore specific event, check actual file later
+			}
+		}
+	}()
+
+	return ret, nil
+
+}
+
+// awaitFileRemove establishes an asynchronous poll on a file location until it is removed
+// at which point the returned channel will return a nil on the channel. A non-nil indicates
+// an error in the polling.
+func awaitFileRemove(name string, timeout time.Duration) (<-chan error, error) {
+
+	ret := make(chan error, 1)
+
+	// file is not there. Easy.
+	if !checkFile(name) {
+		ret <- nil
+		return ret, nil
+	}
+
+	// set up notification and timeout
+	tout := time.After(timeout)
+	// intervals at every 20 milliseconds
+	interval := time.NewTicker(pollInterval).C
+
+	// naieve polling system
+	go func() {
+		for {
+
+			if !checkFile(name) {
+				// gone!
 				ret <- nil
 				return
 			}
