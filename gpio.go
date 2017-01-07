@@ -101,12 +101,23 @@ func (p *gport) Enable() error {
 	if err := writeFile(p.export, p.sport); err != nil {
 		return err
 	}
-	ch, err := awaitFileCreate(p.folder, timelimit)
-	if err != nil {
-		return err
+
+	start := time.Now()
+	// wait for folder to arrive....
+	// and for all control files to exist and be readable
+	// there's an issue with timeouts perhaps.... but that's OK.
+	for _, fname := range []string{p.folder, p.direction, p.value, p.edge} {
+		remaining := timelimit - time.Since(start)
+		fmt.Printf("Await timeout reevaluated to be %v\n", remaining)
+		ch, err := awaitFileCreate(fname, remaining)
+		if err != nil {
+			return err
+		}
+		if err := <-ch; err != nil {
+			return err
+		}
 	}
-	// wait for the file to arrive, and then return
-	return <-ch
+	return nil
 }
 
 func (p *gport) Reset() error {

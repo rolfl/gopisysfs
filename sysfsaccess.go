@@ -173,9 +173,17 @@ func writeFile(name, text string) error {
 	return ioutil.WriteFile(name, data, 0444)
 }
 
-// checkFile retuns true if the specified file exists
+// checkFile retuns true if the specified file exists and is readable
 func checkFile(name string) bool {
 	if _, err := os.Stat(name); err == nil {
+		// exists, but is it readable?
+		// Note, you can open directories as well
+		file, err := os.Open(name)
+		if err != nil {
+			fmt.Printf("Existing file %v but it is not readable")
+			return false
+		}
+		file.Close()
 		// already exists
 		return true
 	}
