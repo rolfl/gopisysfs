@@ -34,6 +34,7 @@ const (
 )
 
 type GPIOPort interface {
+	State() string
 	IsEnabled() bool
 	Enable() error
 	Reset() error
@@ -165,6 +166,27 @@ func (p *gport) IsOutput() (bool, error) {
 		return false, err
 	}
 	return d != "in", nil
+}
+
+func (p *gport) State() string {
+
+	defer p.unlock(p.lock())
+
+	base := fmt.Sprintf("GPIO %v: ", p.sport)
+	if !checkFile(p.folder) {
+		return base + "Reset"
+	}
+
+	dir, err := p.readDirection()
+	if err != nil {
+		return fmt.Sprintf("%v%v", base, err)
+	}
+	val, err := p.readValue()
+	if err != nil {
+		return fmt.Sprintf("%v%v", base, err)
+	}
+
+	return fmt.Sprintf("%v %v with value %v", base, dir, val)
 }
 
 func (p *gport) Value() (bool, error) {
