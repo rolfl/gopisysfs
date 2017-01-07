@@ -2,6 +2,7 @@ package gopisysfs
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -107,20 +108,36 @@ func (p *gport) Enable() error {
 
 	start := time.Now()
 	// wait for folder to arrive....
+	ch, err := awaitFileCreate(p.folder, timelimit)
+	if err != nil {
+		return err
+	}
+	if err := <-ch; err != nil {
+		return err
+	}
+	// delay a bit.
+	<-time.After(pollInterval * 2)
 	// and for all control files to exist and be readable
 	// there's an issue with timeouts perhaps.... but that's OK.
 	for _, fname := range []string{p.folder, p.direction, p.value, p.edge} {
-		remaining := timelimit - time.Since(start)
-
-		//fmt.Printf("Await timeout reevaluated to be %v\n", remaining)
-
-		ch, err := awaitFileCreate(fname, remaining)
-		if err != nil {
-			return err
+		for {
+			remaining := timelimit - time.Since(start)
+			info("GPIO Enabling %v checking file %v state (timeout limit %v)\n", p, fname, remaining)
+			if checkFile(fname) {
+				// check writable.... invalid data will be ignored, but permissions won't
+				if err := writeFile(fname, " "); err == nil || !os.IsPermission(err) {
+					info("GPIO Enabling %v checking file %v state\n", p, fname)
+					break
+				}
+			}
+			select {
+			case <-time.After(remaining):
+				return fmt.Errorf("Timed out enabling GPIO %v - %v not yet writable", p.sport, fname)
+			case <-time.After(pollInterval):
+				// next cycle
+			}
 		}
-		if err := <-ch; err != nil {
-			return err
-		}
+
 	}
 
 	info("GPIO Enabled %v\n", p)

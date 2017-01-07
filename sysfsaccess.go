@@ -173,8 +173,7 @@ func writeFile(name, text string) error {
 	return ioutil.WriteFile(name, data, 0444)
 }
 
-// checkFile retuns true if the specified file exists and is writable
-func checkFile(name string) bool {
+func checkWritable(name string) bool {
 	if stat, err := os.Stat(name); err == nil {
 		// exists, but is it writable?
 		mode := os.O_RDWR
@@ -190,6 +189,16 @@ func checkFile(name string) bool {
 			return false
 		}
 		file.Close()
+		// already exists
+		return true
+	}
+	return false
+}
+
+// checkFile retuns true if the specified file exists
+func checkFile(name string) bool {
+	if _, err := os.Stat(name); err == nil {
+		// exists, but is it writable?
 		// already exists
 		return true
 	}
