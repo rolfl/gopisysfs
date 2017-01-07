@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -35,8 +34,6 @@ func file(paths ...string) string {
 	}
 	return path
 }
-
-var syslock sync.Mutex
 
 // readFilePanic reads a file returning the contents as a string, and panics if it cannot be read
 func readFilePanic(name string) string {
@@ -137,17 +134,6 @@ func awaitFileRemove(name string, timeout time.Duration) (<-chan error, error) {
 
 }
 
-// lock and the matching unlock function ensure that all IO from this program to the sysfs is serialized.
-func lock() bool {
-	syslock.Lock()
-	return true
-}
-
-// unlock and the matching lock function ensure that all IO from this program to the sysfs is serialized.
-func unlock(bool) {
-	syslock.Unlock()
-}
-
 func readStringFileAsInt(name string) (int, error) {
 	data, err := readFile(name)
 	if err != nil {
@@ -162,7 +148,6 @@ func readStringFileAsInt(name string) (int, error) {
 
 //readFile reads the file and returns the contents as a string (trimmed)
 func readFile(name string) (string, error) {
-	defer unlock(lock())
 	data, err := ioutil.ReadFile(name)
 	if err != nil {
 		return "", err
@@ -174,26 +159,22 @@ func readFile(name string) (string, error) {
 
 // readBuffer reads a file in to a byte buffer
 func readBytes(name string) ([]byte, error) {
-	defer unlock(lock())
 	return ioutil.ReadFile(name)
 }
 
 // writeBuffer writes a buffer in to a file
 func writeBuffer(name string, data []byte) error {
-	defer unlock(lock())
 	return ioutil.WriteFile(name, data, 0444)
 }
 
 // writeFile will overwrite the specified file with the given string content
 func writeFile(name, text string) error {
-	defer unlock(lock())
 	data := []byte(text)
 	return ioutil.WriteFile(name, data, 0444)
 }
 
 // checkFile retuns true if the specified file exists
 func checkFile(name string) bool {
-	defer unlock(lock())
 	if _, err := os.Stat(name); err == nil {
 		// already exists
 		return true
