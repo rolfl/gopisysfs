@@ -126,7 +126,7 @@ func (p *gport) Enable() error {
 	pause()
 	// and for all control files to exist and be readable
 	// there's an issue with timeouts perhaps.... but that's OK.
-	for _, fname := range []string{p.folder, p.direction, p.value, p.edge} {
+	for _, fname := range []string{p.direction, p.value, p.edge} {
 		for {
 			remaining := timelimit - time.Since(start)
 			info("GPIO Enabling %v checking file %v state (timeout limit %v)\n", p, fname, remaining)
