@@ -28,7 +28,7 @@ const (
 	direction_outhi  = "high"
 
 	// the longest time to wait for an operation to complete
-	timelimit = time.Second
+	timelimit = time.Second * 2
 
 	low  = "0"
 	high = "1"
@@ -81,6 +81,10 @@ func newGPIO(host *pi, port int) *gport {
 	}
 }
 
+func pause() {
+	<-time.After(pollInterval)
+}
+
 func (p *gport) String() string {
 	return p.folder
 }
@@ -107,6 +111,9 @@ func (p *gport) Enable() error {
 	}
 
 	start := time.Now()
+
+	pause()
+
 	// wait for folder to arrive....
 	ch, err := awaitFileCreate(p.folder, timelimit)
 	if err != nil {
@@ -116,7 +123,7 @@ func (p *gport) Enable() error {
 		return err
 	}
 	// delay a bit.
-	<-time.After(pollInterval * 2)
+	pause()
 	// and for all control files to exist and be readable
 	// there's an issue with timeouts perhaps.... but that's OK.
 	for _, fname := range []string{p.folder, p.direction, p.value, p.edge} {
@@ -126,8 +133,10 @@ func (p *gport) Enable() error {
 			if checkFile(fname) {
 				// check writable.... invalid data will be ignored, but permissions won't
 				if err := writeFile(fname, " "); err == nil || !os.IsPermission(err) {
-					info("GPIO Enabling %v checking file %v state\n", p, fname)
+					info("GPIO Enabling %v file %v state OK\n", p, fname)
 					break
+				} else {
+					info("GPIO Enabling %v file %v state %v\n", p, fname, err)
 				}
 			}
 			select {
@@ -157,6 +166,7 @@ func (p *gport) Reset() error {
 	if err := writeFile(p.unexport, p.sport); err != nil {
 		return err
 	}
+	pause()
 	ch, err := awaitFileRemove(p.folder, timelimit)
 	if err != nil {
 		return err
