@@ -119,7 +119,9 @@ func (p *gport) Enable() error {
 
 	// and for all control files to exist and be writable
 	// there's an issue with timeouts perhaps.... but that's OK.
-	for _, fname := range []string{p.direction, p.value, p.edge} {
+	// don't check value ... it can give "operation not permitted" error for an input GPIO when the
+	// write is made - go can interpret that as a permissions error
+	for _, fname := range []string{p.direction, p.edge} {
 		for {
 			remaining := timelimit - time.Since(start)
 			info("GPIO Enabling %v checking file %v state (timeout limit %v)\n", p, fname, remaining)
