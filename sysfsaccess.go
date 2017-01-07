@@ -175,12 +175,18 @@ func writeFile(name, text string) error {
 
 // checkFile retuns true if the specified file exists and is writable
 func checkFile(name string) bool {
-	if _, err := os.Stat(name); err == nil {
+	if stat, err := os.Stat(name); err == nil {
 		// exists, but is it writable?
+		mode := os.O_RDWR
+		desc := "writable file"
+		if stat.IsDir() {
+			mode = os.O_RDONLY
+			desc = "readable folder"
+		}
 		// Note, you can open directories as well
-		file, err := os.OpenFile(name, os.O_RDWR, 0)
+		file, err := os.OpenFile(name, mode, 0)
 		if err != nil {
-			fmt.Printf("Existing file %v but it is not writable: %v", name, err)
+			fmt.Printf("Existing file %v but it is not a %v: %v\n", name, desc, err)
 			return false
 		}
 		file.Close()
