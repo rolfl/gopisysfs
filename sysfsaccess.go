@@ -164,11 +164,13 @@ func readBytes(name string) ([]byte, error) {
 
 // writeBuffer writes a buffer in to a file
 func writeBuffer(name string, data []byte) error {
+	info("Writing to %v: %v\n", name, data)
 	return ioutil.WriteFile(name, data, 0444)
 }
 
 // writeFile will overwrite the specified file with the given string content
 func writeFile(name, text string) error {
+	info("Writing to %v: %v\n", name, text)
 	data := []byte(text)
 	return ioutil.WriteFile(name, data, 0444)
 }
@@ -185,7 +187,7 @@ func checkWritable(name string) bool {
 		// Note, you can open directories as well
 		file, err := os.OpenFile(name, mode, 0)
 		if err != nil {
-			fmt.Printf("Existing file %v but it is not a %v: %v\n", name, desc, err)
+			info("Existing file %v but it is not a %v: %v\n", name, desc, err)
 			return false
 		}
 		file.Close()
