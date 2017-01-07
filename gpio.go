@@ -98,6 +98,9 @@ func (p *gport) Enable() error {
 	if checkFile(p.folder) {
 		return nil
 	}
+
+	info("GPIO Enabling %v\n", p)
+
 	if err := writeFile(p.export, p.sport); err != nil {
 		return err
 	}
@@ -108,7 +111,9 @@ func (p *gport) Enable() error {
 	// there's an issue with timeouts perhaps.... but that's OK.
 	for _, fname := range []string{p.folder, p.direction, p.value, p.edge} {
 		remaining := timelimit - time.Since(start)
-		fmt.Printf("Await timeout reevaluated to be %v\n", remaining)
+
+		//fmt.Printf("Await timeout reevaluated to be %v\n", remaining)
+
 		ch, err := awaitFileCreate(fname, remaining)
 		if err != nil {
 			return err
@@ -117,6 +122,9 @@ func (p *gport) Enable() error {
 			return err
 		}
 	}
+
+	info("GPIO Enabled %v\n", p)
+
 	return nil
 }
 
@@ -128,6 +136,7 @@ func (p *gport) Reset() error {
 		// already reset
 		return nil
 	}
+	info("GPIO Resetting  %v\n", p)
 	if err := writeFile(p.unexport, p.sport); err != nil {
 		return err
 	}
@@ -136,8 +145,14 @@ func (p *gport) Reset() error {
 		return err
 	}
 
+	if err := <-ch; err != nil {
+		return err
+	}
+
 	// wait for the file to be removed, and then return
-	return <-ch
+	info("GPIO Reset  %v\n", p)
+	return nil
+
 }
 
 // GPIOResetAsync will reset the specified port and only return when it is complete
@@ -241,6 +256,8 @@ func (p *gport) Values() (<-chan bool, error) {
 }
 
 func (p *gport) writeDirection(direction string) error {
+	info("GPIO Setting mode on  %v to %v\n", p, direction)
+
 	return writeFile(p.direction, direction)
 }
 
