@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -145,6 +146,18 @@ func lock() bool {
 // unlock and the matching lock function ensure that all IO from this program to the sysfs is serialized.
 func unlock(bool) {
 	syslock.Unlock()
+}
+
+func readStringFileAsInt(name string) (int, error) {
+	data, err := readFile(name)
+	if err != nil {
+		return 0, err
+	}
+	val, err := strconv.Atoi(data)
+	if err != nil {
+		return 0, fmt.Errorf("Unable to convert value %v from %v to an int: %v", data, name, err)
+	}
+	return val, nil
 }
 
 //readFile reads the file and returns the contents as a string (trimmed)

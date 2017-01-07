@@ -2,6 +2,7 @@ package gopisysfs
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -15,7 +16,6 @@ const (
 	sys_model    = "sys/firmware/devicetree/base/model"
 	sys_gpio     = "sys/class/gpio"
 	proc_cpuinfo = "proc/cpuinfo"
-	max_port     = 256 // wildly high, but prevents insanity
 )
 
 //Pi contains information describing the Pi model we are running on
@@ -23,7 +23,7 @@ type Pi interface {
 	Model() string
 	Revision() string
 	P1GPIOPorts() []int
-	GetPort(int) GPIOPort
+	GetPort(int) (GPIOPort, error)
 }
 
 // GetDetails returns the details of the Pi that is currently being run on
@@ -50,6 +50,7 @@ type pi struct {
 func init() {
 	setOnPi()
 	setModelMaps()
+	setAvailableGPIOs()
 }
 
 var onpi bool
@@ -139,6 +140,39 @@ func readRevision() string {
 	return revision
 }
 
+var availableGPIO map[int]bool
+
+func setAvailableGPIOs() {
+	availableGPIO = make(map[int]bool)
+	gpio := file(sys_gpio)
+	nodes, err := ioutil.ReadDir(gpio)
+	if err != nil {
+		info("Unable to read folder %v: %v", gpio, err)
+		return
+	}
+	// See sysfs standard, needs to be a base and ngpio file: https://www.kernel.org/doc/Documentation/gpio/sysfs.txt
+	for _, f := range nodes {
+		if strings.HasPrefix(f.Name(), "gpiochip") {
+			chip := filepath.Join(gpio, f.Name())
+			fbase := filepath.Join(chip, "base")
+			fngpio := filepath.Join(chip, "ngpio")
+			base, err := readStringFileAsInt(fbase)
+			if err != nil {
+				info("Unable to read file %v: %v", filepath.Join(chip, "base"), err)
+				continue
+			}
+			ngpio, err := readStringFileAsInt(fngpio)
+			if err != nil {
+				info("Unable to read file %v: %v", filepath.Join(chip, "ngpio"), err)
+				continue
+			}
+			for i := 0; i < ngpio; i++ {
+				availableGPIO[base+i] = true
+			}
+		}
+	}
+}
+
 func isChip(path string, name string) bool {
 	if !strings.HasPrefix(name, "gpiochip") {
 		return false
@@ -224,15 +258,18 @@ func (p *pi) IsP1Port(port int) bool {
 // GetPort returns a control point in to a GPIO Port.
 // The control needs to be checked to ensure that the port is actually a GPIO Port
 // as some ports may be multiplexed in to UARTs, I2C, etc. or the port may not exist.
-func (p *pi) GetPort(port int) GPIOPort {
+func (p *pi) GetPort(port int) (GPIOPort, error) {
+	if !availableGPIO[port] {
+		return nil, fmt.Errorf("Port %v is not available on this system", port)
+	}
 	defer p.unlock(p.lock())
 	pctrl, ok := p.portctrl[port]
 	if ok {
-		return pctrl
+		return pctrl, nil
 	}
 	pctrl = newGPIO(p, port)
 	p.portctrl[port] = pctrl
-	return pctrl
+	return pctrl, nil
 }
 
 func (p *pi) portFolder(port int) string {

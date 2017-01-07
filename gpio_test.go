@@ -5,15 +5,18 @@ import (
 )
 
 func TestResetNoop(t *testing.T) {
-	mustbereal()
+	//mustbereal()
 	SetLogFn(t.Logf)
 	pi := GetDetailsFor(testrevision, testmodel)
 	t.Logf("Got details %v", pi)
-	port := pi.GetPort(testinport)
+	port, err := pi.GetPort(testinport)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !port.IsGPIO() {
 		t.Fatalf("Port %v is not a GPIO port. Can't test", testinport)
 	}
-	err := port.Reset()
+	err = port.Reset()
 	if err != nil {
 		t.Fatal(err)
 	}
