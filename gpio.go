@@ -81,10 +81,6 @@ func newGPIO(host *pi, port int) *gport {
 	}
 }
 
-func pause() {
-	<-time.After(pollInterval)
-}
-
 func (p *gport) String() string {
 	return p.folder
 }
@@ -112,8 +108,6 @@ func (p *gport) Enable() error {
 
 	start := time.Now()
 
-	pause()
-
 	// wait for folder to arrive....
 	ch, err := awaitFileCreate(p.folder, timelimit)
 	if err != nil {
@@ -122,16 +116,15 @@ func (p *gport) Enable() error {
 	if err := <-ch; err != nil {
 		return err
 	}
-	// delay a bit.
-	pause()
-	// and for all control files to exist and be readable
+
+	// and for all control files to exist and be writable
 	// there's an issue with timeouts perhaps.... but that's OK.
 	for _, fname := range []string{p.direction, p.value, p.edge} {
 		for {
 			remaining := timelimit - time.Since(start)
 			info("GPIO Enabling %v checking file %v state (timeout limit %v)\n", p, fname, remaining)
 			if checkFile(fname) {
-				// check writable.... invalid data will be ignored, but permissions won't
+				// exists, but check writable.... invalid data will be ignored(rejected), but permissions won't
 				if err := writeFile(fname, " "); err == nil || !os.IsPermission(err) {
 					info("GPIO Enabling %v file %v state OK\n", p, fname)
 					break
@@ -139,6 +132,7 @@ func (p *gport) Enable() error {
 					info("GPIO Enabling %v file %v state %v\n", p, fname, err)
 				}
 			}
+			remaining = timelimit - time.Since(start)
 			select {
 			case <-time.After(remaining):
 				return fmt.Errorf("Timed out enabling GPIO %v - %v not yet writable", p.sport, fname)
@@ -166,7 +160,6 @@ func (p *gport) Reset() error {
 	if err := writeFile(p.unexport, p.sport); err != nil {
 		return err
 	}
-	pause()
 	ch, err := awaitFileRemove(p.folder, timelimit)
 	if err != nil {
 		return err
@@ -193,17 +186,28 @@ func (p *gport) SetMode(mode GPIOMode) error {
 		return err
 	}
 
+	direction := ""
+
 	switch mode {
 	case GPIOInput:
-		return p.writeDirection(direction_in)
+		direction = direction_in
 	case GPIOOutput:
-		return p.writeDirection(direction_out)
+		direction = direction_out
 	case GPIOOutputHigh:
-		return p.writeDirection(direction_outhi)
+		direction = direction_outhi
 	case GPIOOutputLow:
-		return p.writeDirection(direction_outlow)
+		direction = direction_outlow
+	default:
+		return fmt.Errorf("GPIOMode %v does not exist")
 	}
-	return fmt.Errorf("GPIOMode %v does not exist")
+
+	info("GPIO Setting mode on  %v to %v\n", p, direction)
+
+	if err := p.writeDirection(direction); err != nil {
+		return err
+	}
+	info("GPIO Set mode on  %v to %v\n", p, direction)
+	return nil
 }
 
 func (p *gport) IsOutput() (bool, error) {
@@ -285,8 +289,6 @@ func (p *gport) Values() (<-chan bool, error) {
 }
 
 func (p *gport) writeDirection(direction string) error {
-	info("GPIO Setting mode on  %v to %v\n", p, direction)
-
 	return writeFile(p.direction, direction)
 }
 
