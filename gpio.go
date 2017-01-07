@@ -241,6 +241,8 @@ func (p *gport) SetValue(value bool) error {
 		return err
 	}
 
+	info("GPIO Set Value on %v to %v\n", p, value)
+
 	val := low
 	if value {
 		val = high
