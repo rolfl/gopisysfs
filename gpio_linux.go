@@ -82,7 +82,7 @@ func monitorData(valf *os.File, data chan<- Event, killer <-chan bool) {
 func buildMonitor(fname string, buffersize int) (<-chan Event, func(), error) {
 
 	// open the value file, we will need the file descriptor
-	valf, err := os.Open(p.value)
+	valf, err := os.Open(fname)
 	if err != nil {
 		return nil, nil, err
 	}
