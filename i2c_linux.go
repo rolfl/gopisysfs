@@ -27,9 +27,11 @@ func ListI2CDevs() ([]string, error) {
 		}
 		name := f.Name()
 		dev := filepath.Join("/dev", name)
+		info("I2C Checking %v\n", dev)
 		if _, err := os.Stat(dev); err != nil {
-			names = append(names, dev)
+			continue
 		}
+		names = append(names, dev)
 	}
 	return names, nil
 }
