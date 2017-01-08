@@ -21,7 +21,7 @@ func monitorData(valf *os.File, data chan<- Event, killer <-chan bool) {
 
 	timeout := 500 * time.Millisecond
 	timeoutTs := unix.NsecToTimespec(int64(timeout))
-	pollspec := []unix.PollFd{{Fd: int32(f.Fd()), Events: unix.POLLIN | unix.POLLPRI | unix.POLLERR}}
+	pollspec := []unix.PollFd{{Fd: int32(valf.Fd()), Events: unix.POLLIN | unix.POLLPRI | unix.POLLERR}}
 
 	count := 0
 	for {
@@ -33,10 +33,6 @@ func monitorData(valf *os.File, data chan<- Event, killer <-chan bool) {
 			return
 		default:
 			// keep on moving ... nothing to do here.
-		}
-
-		if reseek {
-			reseek = false
 		}
 
 		// wait up to some period for data to be there....
@@ -58,15 +54,15 @@ func monitorData(valf *os.File, data chan<- Event, killer <-chan bool) {
 				return
 			}
 			// reset it for next read
-			if _, err := valf.Seek(0); err != nil {
+			if _, err := valf.Seek(0, 0); err != nil {
 				info("GPIO Monitor %v terminating: %v\n", valf.Name(), err)
 				return
 			}
 
-			val = string(buff[:n]) == "1"
+			val := string(buff[:n]) == "1"
 			event := Event{val, stamp}
 			select {
-			case send <- event:
+			case data <- event:
 				info("GPIO Monitor %v sending: %v\n", valf.Name(), event)
 			case <-killer:
 				// normal shut down
@@ -103,6 +99,6 @@ func buildMonitor(fname string, buffersize int) (<-chan Event, func(), error) {
 
 	go monitorData(valf, data, killer)
 
-	return data, killdfn, nil
+	return data, killfn, nil
 
 }
