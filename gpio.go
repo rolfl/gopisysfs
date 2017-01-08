@@ -305,7 +305,14 @@ func (p *gport) SetValue(value bool) error {
 func (p *gport) Values(buffersize int) (<-chan Event, error) {
 	defer p.unlock(p.lock())
 
+	info("GPIO Seting Value channel on %v\n", p)
+
 	err := p.checkEnabled()
+	if err != nil {
+		return nil, err
+	}
+
+	err = p.writeEdge("both")
 	if err != nil {
 		return nil, err
 	}
@@ -317,6 +324,14 @@ func (p *gport) Values(buffersize int) (<-chan Event, error) {
 	p.resetters = append(p.resetters, cleaner)
 
 	return ch, nil
+}
+
+func (p *gport) writeEdge(edges string) error {
+	return writeFile(p.edge, edges)
+}
+
+func (p *gport) readEdge() (string, error) {
+	return readFile(p.edge)
 }
 
 func (p *gport) writeDirection(direction string) error {
