@@ -13,7 +13,7 @@ const (
 	i2c_SLAVE = 0x703
 )
 
-func ListI2CDevs() ([]string, error) {
+func I2CListDevices() ([]string, error) {
 	devdir := file(sys_i2c)
 	files, err := ioutil.ReadDir(devdir)
 	if err != nil {
@@ -36,7 +36,7 @@ func ListI2CDevs() ([]string, error) {
 	return names, nil
 }
 
-type Recording struct {
+type I2CRecording struct {
 	Timestamp time.Time
 	Data      []byte
 }
@@ -47,7 +47,15 @@ func copyBytes(buffer []byte, count int) []byte {
 	return ret
 }
 
-func PollI2C(dev string, address int, bytes int, interval time.Duration) (<-chan Recording, func(), error) {
+// I2CPoll establishes a connection to a slave I2C device and periodically reads a fixed number of bytes from that device.
+// The dev, address, and bytes parameters indicates which device to read and how much to read each time.
+// The bufferdepth determines how deep the returned channel's buffer is.
+// All samples taken after the buffer is filled will be discarded until space is available.
+// An unbuffered return is supported, and guarantees that a receive on that channel gets the most recent sample.
+// The interval indicates the period to sample at.
+// The returned channel will be closed if there's an error reading the device or the poller is closed using the returned termination function.
+// Call the termination function returned when you no longer need to receive polling data.
+func I2CPoll(dev string, address int, bytes int, bufferdepth int, interval time.Duration) (<-chan I2CRecording, func(), error) {
 
 	ctrl, err := os.OpenFile(dev, os.O_RDWR, 0)
 	if err != nil {
@@ -72,10 +80,9 @@ func PollI2C(dev string, address int, bytes int, interval time.Duration) (<-chan
 		return nil, nil, err
 	}
 
-	// single slot channel
-	data := make(chan Recording, 1)
-
-	data <- Recording{time.Now(), copyBytes(buffer, n)}
+	// unbuffered channel - reader only gets data when asking to receive it, and they get the most recently available value.
+	data := make(chan Recording, 0)
+	record := I2CRecording{time.Now(), copyBytes(buffer, n)}
 
 	go func() {
 		defer close(data)
@@ -86,18 +93,26 @@ func PollI2C(dev string, address int, bytes int, interval time.Duration) (<-chan
 
 		var stamp time.Time
 
+		// we do some nil channel tricks to manipulate the select statement. dest is part of that.
+		dest := data
+
 		for {
 			select {
 			case <-killer:
 				return
+			case dest <- record:
+				// disable dest until there's a new record.
+				dest = nil
 			case stamp = <-tick.C:
+				n, err := ctrl.Read(buffer)
+				if err != nil {
+					info("I2C Unexpected error reading %v: %v\n", dev, err)
+					return
+				}
+				record = I2CRecording{stamp, copyBytes(buffer, n)}
+				// indicate there's data to send and reenable dest.
+				dest = data
 			}
-			n, err := ctrl.Read(buffer)
-			if err != nil {
-				info("I2C Unexpected error reading %v: %v\n", dev, err)
-				return
-			}
-			data <- Recording{stamp, copyBytes(buffer, n)}
 		}
 	}()
 
