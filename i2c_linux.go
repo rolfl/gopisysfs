@@ -81,7 +81,7 @@ func I2CPoll(dev string, address int, bytes int, bufferdepth int, interval time.
 	}
 
 	// unbuffered channel - reader only gets data when asking to receive it, and they get the most recently available value.
-	data := make(chan Recording, 0)
+	data := make(chan I2CRecording, 0)
 	record := I2CRecording{time.Now(), copyBytes(buffer, n)}
 
 	go func() {
