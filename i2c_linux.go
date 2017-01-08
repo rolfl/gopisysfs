@@ -39,7 +39,7 @@ type Recording struct {
 	Data      []byte
 }
 
-func copyBytes(buffer []bytes, count int) []byte {
+func copyBytes(buffer []byte, count int) []byte {
 	ret := make([]byte, count)
 	copy(ret, buffer)
 	return ret
@@ -79,7 +79,7 @@ func PollI2C(dev string, address int, bytes int, interval time.Duration) (<-chan
 		defer close(data)
 		defer ctrl.Close()
 
-		tick := time.Tick(interval)
+		tick := time.NewTicker(interval)
 		defer tick.Stop()
 
 		var stamp time.Time
