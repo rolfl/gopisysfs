@@ -34,6 +34,15 @@ const (
 	high = "1"
 )
 
+type Event struct {
+	Value     bool
+	Timestamp time.Time
+}
+
+func (e *Event) String() string {
+	return fmt.Sprintf("%v at %v", e.Value, e.Timestamp)
+}
+
 type GPIOPort interface {
 	State() string
 	IsEnabled() bool
@@ -43,7 +52,7 @@ type GPIOPort interface {
 	IsOutput() (bool, error)
 	SetValue(bool) error
 	Value() (bool, error)
-	Values() (<-chan bool, error)
+	Values(buffersize int) (<-chan Event, error)
 }
 
 type gport struct {
@@ -57,6 +66,7 @@ type gport struct {
 	edge      string
 	export    string
 	unexport  string
+	resetters []func()
 }
 
 func newGPIO(host *pi, port int) *gport {
@@ -78,6 +88,7 @@ func newGPIO(host *pi, port int) *gport {
 		edge:      filepath.Join(folder, "edge"),
 		export:    export,
 		unexport:  unexport,
+		resetters: make([]func(), 0),
 	}
 }
 
@@ -159,6 +170,12 @@ func (p *gport) Reset() error {
 		return nil
 	}
 	info("GPIO Resetting  %v\n", p)
+	for _, r := range p.resetters {
+		// call the reset function
+		r()
+	}
+	p.resetters = nil
+
 	if err := writeFile(p.unexport, p.sport); err != nil {
 		return err
 	}
@@ -285,9 +302,21 @@ func (p *gport) SetValue(value bool) error {
 
 }
 
-func (p *gport) Values() (<-chan bool, error) {
+func (p *gport) Values(buffersize int) (<-chan Event, error) {
 	defer p.unlock(p.lock())
-	return nil, nil
+
+	err := p.checkEnabled()
+	if err != nil {
+		return nil, err
+	}
+
+	ch, cleaner, err := buildMonitor(p.value, buffersize)
+	if err != nil {
+		return nil, err
+	}
+	p.resetters = append(p.resetters, cleaner)
+
+	return ch, nil
 }
 
 func (p *gport) writeDirection(direction string) error {
