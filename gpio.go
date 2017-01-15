@@ -51,6 +51,7 @@ type GPIOPort interface {
 	SetMode(GPIOMode) error
 	IsOutput() (bool, error)
 	SetValue(bool) error
+	SetValues(ch <-chan bool) (<-chan error, error)
 	Value() (bool, error)
 	Values(buffersize int) (<-chan Event, error)
 }
@@ -302,10 +303,50 @@ func (p *gport) SetValue(value bool) error {
 
 }
 
+func (p *gport) SetValues(ch <-chan bool) (<-chan error, error) {
+	defer p.unlock(p.lock())
+
+	info("GPIO Setting Values set channel on %v\n", p)
+
+	err := p.checkEnabled()
+	if err != nil {
+		return nil, err
+	}
+
+	errch := make(chan error, 1)
+	killer := make(chan bool, 1)
+	cleaner := func() {
+		close(killer)
+	}
+	p.resetters = append(p.resetters, cleaner)
+
+	go func() {
+		defer close(errch)
+		for {
+			select {
+			case <-killer:
+				return
+			case v, ok := <-ch:
+				if !ok {
+					return
+				}
+				err := p.SetValue(v)
+				if err != nil {
+					errch <- err
+					return
+				}
+			}
+		}
+	}()
+
+	return errch, nil
+
+}
+
 func (p *gport) Values(buffersize int) (<-chan Event, error) {
 	defer p.unlock(p.lock())
 
-	info("GPIO Seting Value channel on %v\n", p)
+	info("GPIO Setting Value channel on %v\n", p)
 
 	err := p.checkEnabled()
 	if err != nil {
